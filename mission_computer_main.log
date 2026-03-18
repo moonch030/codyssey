@@ -1,0 +1,5 @@
+2026-03-18 21:00:01 INFO System Booting...
+2026-03-18 21:05:22 WARNING Oxygen Level 18%
+2026-03-18 21:10:45 ERROR Pressure Valve Stuck
+2026-03-18 21:12:00 CRITICAL Reactor Overheat
+2026-03-18 21:12:05 CRITICAL Explosion Detected

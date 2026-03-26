@@ -1,4 +1,6 @@
 # main.py
+import os
+
 
 def read_mission_log(file_path):
     '''
@@ -27,11 +29,13 @@ def read_mission_log(file_path):
             if 'ERROR' in line or 'CRITICAL' in line:
                 error_lines.append(line)
 
-        with open('error_only.log', 'w', encoding='utf-8') as ef:
+        out_dir = os.path.dirname(os.path.abspath(file_path))
+        err_path = os.path.join(out_dir, 'error_only.log')
+        with open(err_path, 'w', encoding='utf-8') as ef:
             for error in error_lines:
                 ef.write(error)
         
-        print('\n[시스템] 분석 완료. 에러 로그가 error_only.log에 저장되었습니다.')
+        print(f'\n[시스템] 분석 완료. 에러 로그가 {err_path}에 저장되었습니다.')
 
     except FileNotFoundError:
         print('오류: mission_computer_main.log 파일을 찾을 수 없습니다.')
@@ -39,6 +43,6 @@ def read_mission_log(file_path):
         print(f'예상치 못한 오류 발생: {e}')
 
 if __name__ == '__main__':
-    # 로그 파일 이름 지정
-    log_file = 'mission_computer_main.log'
+    _base = os.path.dirname(os.path.abspath(__file__))
+    log_file = os.path.join(_base, 'mission_computer_main.log')
     read_mission_log(log_file)

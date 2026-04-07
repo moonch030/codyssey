@@ -3,8 +3,6 @@
 # 이 파일 전체 모듈 설명(독스트링): 미션 컴퓨터용 더미 센서 역할을 요약한다.
 '''미션 컴퓨터용 더미 센서: 환경 값 랜덤 생성·조회 및 환경 로그 기록.'''
 
-# 운영체제 경로·파일 조작을 위해 표준 라이브러리 os를 가져온다.
-import os
 # 난수 생성을 위해 과제에서 허용한 표준 라이브러리 random을 가져온다.
 import random
 # 로그에 넣을 현재 날짜·시간을 위해 datetime 클래스만 가져온다.
@@ -17,8 +15,24 @@ ENV_LOG_FILENAME = 'mars_base_environment.log'
 
 def _script_dir():
     '''현재 파이썬 파일이 있는 디렉터리의 절대 경로를 반환한다.'''
-    # __file__의 절대 경로에서 디렉터리 부분만 잘라 반환한다.
-    return os.path.dirname(os.path.abspath(__file__))
+    # __file__ 경로 문자열에서 마지막 파일명만 제거해 디렉터리를 만든다.
+    path = __file__
+    if '/' in path:
+        return path.rsplit('/', 1)[0]
+    return '.'
+
+
+# 주어진 디렉토리 경로와 파일명을 결합해 전체 경로 문자열을 돌려준다.
+# (macOS 등에서 폴더 경로 구분자로 '/'를 사용한다고 가정)
+def _join_path(dir_path, filename):
+    # dir_path가 비어있거나 현재 디렉터리를 뜻하는 '.'이면 파일명 그대로 반환
+    if not dir_path or dir_path == '.':
+        return filename
+    # dir_path가 '/'로 끝나면 그대로 파일명 덧붙임
+    if dir_path.endswith('/'):
+        return dir_path + filename
+    # 아니면 '/'를 사이에 두고 파일명 결합
+    return dir_path + '/' + filename
 
 
 class DummySensor:
@@ -87,7 +101,7 @@ class DummySensor:
         보너스: 반환 전에 날짜·시간과 각 환경 항목을 한 줄로 로그 파일에 추가한다.
         '''
         # 스크립트 폴더와 로그 파일 이름을 합쳐 전체 경로 문자열을 만든다.
-        log_path = os.path.join(_script_dir(), ENV_LOG_FILENAME)
+        log_path = _join_path(_script_dir(), ENV_LOG_FILENAME)
         # 현재 시각을 '년-월-일 시:분:초' 형태 문자열로 만든다.
         ts = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
         # 로그 한 줄: 타임스탬프 뒤에 사람이 읽기 쉬운 한글 라벨과 수치를 이어 붙인다.
@@ -133,4 +147,4 @@ if __name__ == '__main__':
         print(f'  {key}: {value}')
 
     # 로그가 저장된 파일의 전체 경로를 사용자에게 알려 준다.
-    print(f'\n로그 파일 위치: {os.path.join(_script_dir(), ENV_LOG_FILENAME)}')
+    print(f'\n로그 파일 위치: {_join_path(_script_dir(), ENV_LOG_FILENAME)}')

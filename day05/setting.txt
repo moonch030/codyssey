@@ -1,0 +1,8 @@
+# true/false 로 출력 항목 설정
+os_name=true
+os_version=true
+cpu_type=true
+cpu_cores=true
+memory_total_mb=true
+cpu_realtime_percent=true
+memory_realtime_percent=true

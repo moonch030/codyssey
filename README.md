@@ -11,6 +11,7 @@
 | **day03/** | 3일차 — 더미 센서 (`mars_mission_computer.py`, `mars_base_environment.log`) |
 | **day04/** | 4일차 — 미션 컴퓨터·센서 주기 출력·5분 평균 (`mars_mission_computer.py`) |
 | **day05/** | 5일차 — 미션 컴퓨터 시스템 정보·부하 출력, `setting.txt` 필터 (`mars_mission_computer.py`) |
+| **day06/** | 6일차 — PyQt 계산기 UI (`calculator.py`) |
 
 ## 실행 방법
 
@@ -29,6 +30,9 @@ cd day04 && python3 mars_mission_computer.py
 
 # 5일차
 cd day05 && python3 mars_mission_computer.py
+
+# 6일차 (PyQt6 필요: pip install PyQt6)
+cd day06 && python3 calculator.py
 ```
 
 루트에서 실행할 때는 위처럼 해당 일차 폴더로 이동한 뒤 실행

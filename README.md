@@ -13,6 +13,7 @@
 | **day05/** | 5일차 — 미션 컴퓨터 시스템 정보·부하 출력, `setting.txt` 필터 (`mars_mission_computer.py`) |
 | **day06/** | 6일차 — PyQt 계산기 UI (`calculator.py`) |
 | **day07/** | 7일차 — 계산기 핵심 코어 + UI 연결 (`calculator.py`) |
+| **day12/** | 문제5 — MySQL 화성 날씨 (`mars_weather_summary.py`, `mars_weathers_data.csv`) |
 
 ## 실행 방법
 
@@ -37,6 +38,9 @@ cd day06 && python3 calculator.py
 
 # 7일차 (PyQt6 필요: pip install PyQt6)
 cd day07 && python3 calculator.py
+
+# 12일차 (MySQL + mysql-connector-python 필요)
+cd day12 && pip install -r requirements.txt && python mars_weather_summary.py
 ```
 
 루트에서 실행할 때는 위처럼 해당 일차 폴더로 이동한 뒤 실행

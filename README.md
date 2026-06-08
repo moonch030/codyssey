@@ -14,6 +14,7 @@
 | **day06/** | 6일차 — PyQt 계산기 UI (`calculator.py`) |
 | **day07/** | 7일차 — 계산기 핵심 코어 + UI 연결 (`calculator.py`) |
 | **day12/** | 문제5 — MySQL 화성 날씨 (`mars_weather_summary.py`, `mars_weathers_data.csv`) |
+| **day13/** | 미션 컴퓨터 로그 시스템 복구 — CSV 파싱·JSON 저장 (`mission_log_parser.py`, `mission_computer_main.log`) |
 
 ## 실행 방법
 
@@ -41,6 +42,9 @@ cd day07 && python3 calculator.py
 
 # 12일차 (MySQL + mysql-connector-python 필요)
 cd day12 && pip install -r requirements.txt && python mars_weather_summary.py
+
+# 13일차 (로그 CSV → 리스트·사전·JSON)
+cd day13 && python3 mission_log_parser.py
 ```
 
 루트에서 실행할 때는 위처럼 해당 일차 폴더로 이동한 뒤 실행

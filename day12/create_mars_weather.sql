@@ -9,7 +9,7 @@ USE codyssey;
 
 DROP TABLE IF EXISTS mars_weather;
 
-CREATE TABLE mars_weather (
+CREATE TABLE IF NOT EXISTS mars_weather (
     weather_id INT NOT NULL AUTO_INCREMENT,
     mars_date DATETIME NOT NULL,
     temp INT NOT NULL,

@@ -13,7 +13,7 @@
 | **day05/** | 5일차 — 미션 컴퓨터 시스템 정보·부하 출력, `setting.txt` 필터 (`mars_mission_computer.py`) |
 | **day06/** | 6일차 — PyQt 계산기 UI (`calculator.py`) |
 | **day07/** | 7일차 — 계산기 핵심 코어 + UI 연결 (`calculator.py`) |
-| **day12/** | 문제5 — MySQL 화성 날씨 (`mars_weather_summary.py`, `mars_weathers_data.csv`) |
+| **day12/** | 문제5 — MySQL 화성 날씨 (`mars_weather_summary.py`, `mars_weathers_data.CSV`, `README.md`) |
 | **day13/** | 미션 컴퓨터 로그 시스템 복구 — CSV 파싱·JSON 저장 (`mission_log_parser.py`, `mission_computer_main.log`) |
 
 ## 실행 방법
@@ -41,7 +41,7 @@ cd day06 && python3 calculator.py
 cd day07 && python3 calculator.py
 
 # 12일차 (MySQL + mysql-connector-python 필요)
-cd day12 && pip install -r requirements.txt && python mars_weather_summary.py
+cd day12 && python3 -m pip install -r requirements.txt && python3 mars_weather_summary.py
 
 # 13일차 (로그 CSV → 리스트·사전·JSON)
 cd day13 && python3 mission_log_parser.py

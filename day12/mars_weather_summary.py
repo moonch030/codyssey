@@ -1,6 +1,11 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-'''화성 날씨 CSV를 MySQL에 적재하고 요약 그래프를 PNG로 저장한다.'''
+'''
+화성 날씨 CSV를 MySQL mars_weather 테이블에 적재하고
+이동 예정일·모래 폭풍 겹침 여부를 요약한 PNG를 저장한다.
+
+Codyssey 문제5 (day12) 수행 과제
+'''
 
 import csv
 import os
@@ -10,10 +15,12 @@ from datetime import datetime, timedelta
 
 import mysql.connector
 
+# CSV / SQL / 결과 이미지 파일명
 CSV_FILENAME = 'mars_weathers_data.csv'
 PNG_FILENAME = 'mars_weather_summary.png'
 SQL_FILENAME = 'create_mars_weather.sql'
 
+# MySQL 접속 정보 (환경에 맞게 password 등 수정)
 DB_CONFIG = {
     'host': 'localhost',
     'user': 'root',
@@ -23,10 +30,15 @@ DB_CONFIG = {
 
 
 def _script_dir():
+    '''현재 스크립트가 위치한 폴더의 절대 경로를 반환한다.'''
     return os.path.dirname(os.path.abspath(__file__))
 
 
 def _resolve_csv_path():
+    '''
+    mars_weathers_data.csv 또는 mars_weathers_data.CSV 경로를 찾는다.
+    대소문자 다른 파일명 모두 지원한다.
+    '''
     base = _script_dir()
     for name in (CSV_FILENAME, 'mars_weathers_data.CSV'):
         path = os.path.join(base, name)
@@ -59,33 +71,39 @@ def read_and_print_csv(path):
 
 
 def _normalize_header(cell):
+    '''CSV 헤더 셀을 소문자·언더스코어 형태로 통일한다.'''
     return cell.strip().lower().replace(' ', '_')
 
 
+def _to_int(value):
+    '''
+    CSV 숫자 문자열을 테이블 INT 컬럼에 맞게 정수로 변환한다.
+    temp가 21.4처럼 소수로 들어와도 round 후 int로 저장한다.
+    '''
+    return int(round(float(value.strip())))
+
+
 def _parse_csv_rows(raw_rows):
-    '''헤더/데이터 행을 mars_date, temp, storm dict 목록으로 변환한다.'''
+    '''
+    CSV 행 목록을 mars_date, temp, storm dict 목록으로 변환한다.
+
+    제공 파일 헤더: weather_id,mars_date,temp,stom
+    - stom 은 storm 의 오타로 간주한다.
+    - weather_id 는 AUTO_INCREMENT 이므로 INSERT 시 사용하지 않는다.
+    '''
     if not raw_rows:
         return []
 
     first = [cell.strip() for cell in raw_rows[0]]
     header_map = {_normalize_header(cell): idx for idx, cell in enumerate(first)}
 
-    known_headers = {'mars_date', 'temp', 'storm'}
-    if known_headers.issubset(header_map.keys()):
-        data_rows = raw_rows[1:]
-        date_key = 'mars_date'
-        temp_key = 'temp'
-        storm_key = 'storm'
-    elif {'weather_id', 'mars_date', 'temp', 'storm'}.issubset(header_map.keys()):
-        data_rows = raw_rows[1:]
-        date_key = 'mars_date'
-        temp_key = 'temp'
-        storm_key = 'storm'
-    else:
-        data_rows = raw_rows
-        date_key = None
-        temp_key = None
-        storm_key = None
+    # 데이터 파일의 stom 컬럼명 오타를 storm 으로 매핑
+    if 'stom' in header_map and 'storm' not in header_map:
+        header_map['storm'] = header_map['stom']
+
+    required = {'mars_date', 'temp', 'storm'}
+    has_header = required.issubset(header_map.keys())
+    data_rows = raw_rows[1:] if has_header else raw_rows
 
     records = []
     for row in data_rows:
@@ -93,19 +111,21 @@ def _parse_csv_rows(raw_rows):
         if len(cells) < 3:
             continue
 
-        if date_key:
-            mars_date = cells[header_map[date_key]]
-            temp = int(cells[header_map[temp_key]])
-            storm = int(cells[header_map[storm_key]])
+        if has_header:
+            if len(cells) <= max(header_map.values()):
+                continue
+            mars_date = cells[header_map['mars_date']]
+            temp = _to_int(cells[header_map['temp']])
+            storm = _to_int(cells[header_map['storm']])
+        elif len(cells) == 4:
+            # 헤더 없음: weather_id, mars_date, temp, storm 순서
+            mars_date = cells[1]
+            temp = _to_int(cells[2])
+            storm = _to_int(cells[3])
         else:
-            if len(cells) == 4:
-                mars_date = cells[1]
-                temp = int(cells[2])
-                storm = int(cells[3])
-            else:
-                mars_date = cells[0]
-                temp = int(cells[1])
-                storm = int(cells[2])
+            mars_date = cells[0]
+            temp = _to_int(cells[1])
+            storm = _to_int(cells[2])
 
         records.append({
             'mars_date': mars_date,
@@ -116,7 +136,10 @@ def _parse_csv_rows(raw_rows):
 
 
 def row_to_insert_sql(record):
-    '''한 행을 INSERT SQL 문자열로 변환한다.'''
+    '''
+    한 행을 INSERT SQL 문자열로 변환한다.
+    weather_id 는 AUTO_INCREMENT 이므로 mars_date, temp, storm 만 넣는다.
+    '''
     mars_date = record['mars_date'].replace("'", "''")
     temp = record['temp']
     storm = record['storm']
@@ -127,7 +150,7 @@ def row_to_insert_sql(record):
 
 
 class MySQLHelper:
-    '''MySQL 연결과 쿼리 실행을 단순화하는 헬퍼 클래스.'''
+    '''보너스 과제: MySQL 연결·쿼리 실행을 단순화하는 헬퍼 클래스 (CapWord 명명).'''
 
     def __init__(self, config):
         self.config = dict(config)
@@ -135,26 +158,31 @@ class MySQLHelper:
         self.cursor = None
 
     def connect(self):
+        '''config 로 MySQL 에 연결하고 커서를 생성한다.'''
         self.connection = mysql.connector.connect(**self.config)
         self.cursor = self.connection.cursor()
         return self.connection
 
     def execute(self, query, params=None):
+        '''SQL 을 실행한다. params 가 있으면 바인딩 파라미터로 전달한다.'''
         if self.cursor is None:
             raise RuntimeError('데이터베이스에 연결되어 있지 않습니다.')
         self.cursor.execute(query, params or ())
         return self.cursor
 
     def fetchall(self):
+        '''마지막 SELECT 결과 전체를 반환한다.'''
         if self.cursor is None:
             return []
         return self.cursor.fetchall()
 
     def commit(self):
+        '''현재 트랜잭션을 커밋한다.'''
         if self.connection is not None:
             self.connection.commit()
 
     def close(self):
+        '''커서와 연결을 닫는다.'''
         if self.cursor is not None:
             self.cursor.close()
             self.cursor = None
@@ -182,13 +210,17 @@ def _load_create_table_sql():
     statements = []
     for part in text.split(';'):
         cleaned = part.strip()
-        if cleaned and not cleaned.upper().startswith('DROP TABLE'):
+        if cleaned:
             statements.append(cleaned)
     return statements
 
 
 def setup_database(helper):
-    '''데이터베이스와 mars_weather 테이블을 준비한다.'''
+    '''
+    codyssey 데이터베이스와 mars_weather 테이블을 준비한다.
+    create_mars_weather.sql 이 있으면 읽어 실행하고, 없으면 기본 DDL 을 사용한다.
+    재실행 시 기존 mars_weather 데이터는 DELETE 로 비운 뒤 다시 INSERT 한다.
+    '''
     db_name = helper.config.get('database', 'codyssey')
     bootstrap = dict(helper.config)
     bootstrap.pop('database', None)
@@ -215,7 +247,10 @@ def setup_database(helper):
 
 
 def insert_records(helper, records):
-    '''CSV 레코드를 INSERT 쿼리로 변환해 반복 실행한다.'''
+    '''
+    CSV 레코드를 INSERT 쿼리 문자열로 변환해 한 건씩 반복 실행한다.
+    과제 요구: CSV 내용을 INSERT 쿼리로 변환 후 반복 실행.
+    '''
     for record in records:
         sql = row_to_insert_sql(record)
         print(sql)
@@ -224,6 +259,7 @@ def insert_records(helper, records):
 
 
 def fetch_weather_rows(helper):
+    '''mars_weather 테이블에서 날짜순 전체 행을 조회한다.'''
     helper.execute(
         'SELECT mars_date, temp, storm FROM mars_weather '
         'ORDER BY mars_date ASC'
@@ -238,7 +274,12 @@ def _parse_db_datetime(value):
 
 
 def build_summary_text(rows):
-    '''이동 예정일과 모래 폭풍 겹침 여부를 요약한다. (콘솔용, PNG용)'''
+    '''
+    이동 예정일과 모래 폭풍 겹침 여부를 요약한다.
+
+    - 이동 예정일: DB 에 저장된 마지막 날짜 + 1일
+    - storm 값이 0 이 아니면 해당 일에 모래 폭풍이 있는 것으로 판단
+    '''
     if not rows:
         return '데이터 없음', ['No data']
 
@@ -248,6 +289,7 @@ def build_summary_text(rows):
 
     last_date = max(dates)
     travel_date = last_date + timedelta(days=1)
+    # storm == 0 이면 맑음, 0 이 아니면 폭풍(또는 폭풍 강도) 기록
     storm_days = [d.strftime('%Y-%m-%d') for d, s in zip(dates, storms) if s != 0]
 
     on_travel = any(
@@ -438,7 +480,10 @@ def _png_pack(tag, data):
 
 
 def save_summary_png(path, rows, summary_text):
-    '''표준 라이브러리만 사용해 요약 PNG를 저장한다.'''
+    '''
+    matplotlib 없이 표준 라이브러리(struct, zlib)만으로 PNG 를 생성·저장한다.
+    상단에 요약 텍스트, 하단에 온도 꺾은선·폭풍일(빨간 띠)을 그린다.
+    '''
     width = 900
     height = 520
     pixels = [(255, 255, 255)] * (width * height)
@@ -463,12 +508,19 @@ def save_summary_png(path, rows, summary_text):
 
 
 def main():
+    '''
+    1) CSV 읽기·출력  2) MySQL 연결·테이블 생성
+    3) INSERT 반복 실행  4) 요약 출력  5) PNG 저장
+    '''
     csv_path = _resolve_csv_path()
     print(f'=== {os.path.basename(csv_path)} 내용 ===')
     raw_rows = read_and_print_csv(csv_path)
     records = _parse_csv_rows(raw_rows)
     if not records:
+        print('적재할 레코드가 없습니다. CSV 형식을 확인하세요.')
         return
+
+    print(f'\n[파싱 완료] {len(records)}건 (mars_date, temp, storm)')
 
     helper = MySQLHelper(DB_CONFIG)
     try:

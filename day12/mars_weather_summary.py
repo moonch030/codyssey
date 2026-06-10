@@ -8,6 +8,8 @@ Codyssey 문제5 (day12) 수행 과제
 '''
 
 import csv
+import getpass
+import importlib.util
 import os
 import struct
 import zlib
@@ -20,13 +22,15 @@ CSV_FILENAME = 'mars_weathers_data.csv'
 PNG_FILENAME = 'mars_weather_summary.png'
 SQL_FILENAME = 'create_mars_weather.sql'
 
-# MySQL 접속 정보 (환경에 맞게 password 등 수정)
+# MySQL 접속 정보 (password는 db_config.local.py 또는 실행 시 입력)
 DB_CONFIG = {
     'host': 'localhost',
     'user': 'root',
     'password': '',
     'database': 'codyssey',
 }
+
+LOCAL_CONFIG_FILENAME = 'db_config.local.py'
 
 
 def _script_dir():
@@ -45,6 +49,34 @@ def _resolve_csv_path():
         if os.path.isfile(path):
             return path
     return os.path.join(base, CSV_FILENAME)
+
+
+def resolve_db_config():
+    '''
+    DB_CONFIG에 db_config.local.py·환경변수·입력 비밀번호를 반영한다.
+    터미널에 Python 코드를 붙여 넣을 필요 없이 이 함수가 설정을 맞춘다.
+    '''
+    config = dict(DB_CONFIG)
+
+    local_path = os.path.join(_script_dir(), LOCAL_CONFIG_FILENAME)
+    if os.path.isfile(local_path):
+        spec = importlib.util.spec_from_file_location('db_config_local', local_path)
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        if hasattr(module, 'DB_CONFIG'):
+            config.update(module.DB_CONFIG)
+        if hasattr(module, 'MYSQL_PASSWORD'):
+            config['password'] = module.MYSQL_PASSWORD
+
+    env_password = os.environ.get('MYSQL_PASSWORD')
+    if env_password is not None:
+        config['password'] = env_password
+
+    if not config.get('password'):
+        prompt = f"MySQL 비밀번호 ({config.get('user', 'root')}): "
+        config['password'] = getpass.getpass(prompt)
+
+    return config
 
 
 def read_and_print_csv(path):
@@ -522,7 +554,8 @@ def main():
 
     print(f'\n[파싱 완료] {len(records)}건 (mars_date, temp, storm)')
 
-    helper = MySQLHelper(DB_CONFIG)
+    db_config = resolve_db_config()
+    helper = MySQLHelper(db_config)
     try:
         setup_database(helper)
         print('\n=== INSERT 쿼리 실행 ===')
@@ -536,7 +569,15 @@ def main():
         save_summary_png(png_path, rows, '\n'.join(png_lines))
     except mysql.connector.Error as err:
         print(f'MySQL 오류: {err}')
-        print('MySQL 서버 실행 및 DB_CONFIG(비밀번호 등)를 확인하세요.')
+        if err.errno == 1045:
+            print(
+                '로그인 실패입니다. day12/db_config.local.py 에서 '
+                'Workbench와 같은 user·password를 넣으세요.\n'
+                f"  현재 user: {db_config.get('user')}\n"
+                '  (로컬 Workbench는 보통 root가 아니라 dvely 계정입니다.)'
+            )
+        else:
+            print('MySQL 서버 실행 및 db_config.local.py 설정을 확인하세요.')
     finally:
         helper.close()
 

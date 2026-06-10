@@ -1,11 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-'''
-화성 날씨 CSV를 MySQL mars_weather 테이블에 적재하고
-이동 예정일·모래 폭풍 겹침 여부를 요약한 PNG를 저장한다.
-
-Codyssey 문제5 (day12) 수행 과제
-'''
+'''화성 날씨 CSV → MySQL 적재 및 요약 PNG 저장.'''
 
 import csv
 import getpass
@@ -17,12 +12,11 @@ from datetime import datetime, timedelta
 
 import mysql.connector
 
-# CSV / SQL / 결과 이미지 파일명
+# 설정
 CSV_FILENAME = 'mars_weathers_data.csv'
 PNG_FILENAME = 'mars_weather_summary.png'
 SQL_FILENAME = 'create_mars_weather.sql'
 
-# MySQL 접속 정보 (password는 db_config.local.py 또는 실행 시 입력)
 DB_CONFIG = {
     'host': 'localhost',
     'user': 'root',
@@ -34,15 +28,10 @@ LOCAL_CONFIG_FILENAME = 'db_config.local.py'
 
 
 def _script_dir():
-    '''현재 스크립트가 위치한 폴더의 절대 경로를 반환한다.'''
     return os.path.dirname(os.path.abspath(__file__))
 
 
 def _resolve_csv_path():
-    '''
-    mars_weathers_data.csv 또는 mars_weathers_data.CSV 경로를 찾는다.
-    대소문자 다른 파일명 모두 지원한다.
-    '''
     base = _script_dir()
     for name in (CSV_FILENAME, 'mars_weathers_data.CSV'):
         path = os.path.join(base, name)
@@ -51,11 +40,8 @@ def _resolve_csv_path():
     return os.path.join(base, CSV_FILENAME)
 
 
+# DB 접속 설정
 def resolve_db_config():
-    '''
-    DB_CONFIG에 db_config.local.py·환경변수·입력 비밀번호를 반영한다.
-    터미널에 Python 코드를 붙여 넣을 필요 없이 이 함수가 설정을 맞춘다.
-    '''
     config = dict(DB_CONFIG)
 
     local_path = os.path.join(_script_dir(), LOCAL_CONFIG_FILENAME)
@@ -79,13 +65,13 @@ def resolve_db_config():
     return config
 
 
+# CSV 읽기
 def read_and_print_csv(path):
-    '''CSV 전체를 읽어 화면에 출력하고 행 목록을 반환한다.'''
     rows = []
     try:
         with open(path, 'r', encoding='utf-8-sig', newline='') as file_obj:
             reader = csv.reader(file_obj)
-            for line_no, raw_row in enumerate(reader, start=1):
+            for raw_row in reader:
                 if not raw_row or all(not cell.strip() for cell in raw_row):
                     continue
                 rows.append(raw_row)
@@ -103,33 +89,21 @@ def read_and_print_csv(path):
 
 
 def _normalize_header(cell):
-    '''CSV 헤더 셀을 소문자·언더스코어 형태로 통일한다.'''
     return cell.strip().lower().replace(' ', '_')
 
 
 def _to_int(value):
-    '''
-    CSV 숫자 문자열을 테이블 INT 컬럼에 맞게 정수로 변환한다.
-    temp가 21.4처럼 소수로 들어와도 round 후 int로 저장한다.
-    '''
     return int(round(float(value.strip())))
 
 
+# CSV 파싱
 def _parse_csv_rows(raw_rows):
-    '''
-    CSV 행 목록을 mars_date, temp, storm dict 목록으로 변환한다.
-
-    제공 파일 헤더: weather_id,mars_date,temp,stom
-    - stom 은 storm 의 오타로 간주한다.
-    - weather_id 는 AUTO_INCREMENT 이므로 INSERT 시 사용하지 않는다.
-    '''
     if not raw_rows:
         return []
 
     first = [cell.strip() for cell in raw_rows[0]]
     header_map = {_normalize_header(cell): idx for idx, cell in enumerate(first)}
 
-    # 데이터 파일의 stom 컬럼명 오타를 storm 으로 매핑
     if 'stom' in header_map and 'storm' not in header_map:
         header_map['storm'] = header_map['stom']
 
@@ -150,7 +124,6 @@ def _parse_csv_rows(raw_rows):
             temp = _to_int(cells[header_map['temp']])
             storm = _to_int(cells[header_map['storm']])
         elif len(cells) == 4:
-            # 헤더 없음: weather_id, mars_date, temp, storm 순서
             mars_date = cells[1]
             temp = _to_int(cells[2])
             storm = _to_int(cells[3])
@@ -167,11 +140,8 @@ def _parse_csv_rows(raw_rows):
     return records
 
 
+# INSERT SQL 변환
 def row_to_insert_sql(record):
-    '''
-    한 행을 INSERT SQL 문자열로 변환한다.
-    weather_id 는 AUTO_INCREMENT 이므로 mars_date, temp, storm 만 넣는다.
-    '''
     mars_date = record['mars_date'].replace("'", "''")
     temp = record['temp']
     storm = record['storm']
@@ -181,8 +151,8 @@ def row_to_insert_sql(record):
     )
 
 
+# MySQLHelper
 class MySQLHelper:
-    '''보너스 과제: MySQL 연결·쿼리 실행을 단순화하는 헬퍼 클래스 (CapWord 명명).'''
 
     def __init__(self, config):
         self.config = dict(config)
@@ -190,31 +160,26 @@ class MySQLHelper:
         self.cursor = None
 
     def connect(self):
-        '''config 로 MySQL 에 연결하고 커서를 생성한다.'''
         self.connection = mysql.connector.connect(**self.config)
         self.cursor = self.connection.cursor()
         return self.connection
 
     def execute(self, query, params=None):
-        '''SQL 을 실행한다. params 가 있으면 바인딩 파라미터로 전달한다.'''
         if self.cursor is None:
             raise RuntimeError('데이터베이스에 연결되어 있지 않습니다.')
         self.cursor.execute(query, params or ())
         return self.cursor
 
     def fetchall(self):
-        '''마지막 SELECT 결과 전체를 반환한다.'''
         if self.cursor is None:
             return []
         return self.cursor.fetchall()
 
     def commit(self):
-        '''현재 트랜잭션을 커밋한다.'''
         if self.connection is not None:
             self.connection.commit()
 
     def close(self):
-        '''커서와 연결을 닫는다.'''
         if self.cursor is not None:
             self.cursor.close()
             self.cursor = None
@@ -247,12 +212,8 @@ def _load_create_table_sql():
     return statements
 
 
+# DB 준비
 def setup_database(helper):
-    '''
-    codyssey 데이터베이스와 mars_weather 테이블을 준비한다.
-    create_mars_weather.sql 이 있으면 읽어 실행하고, 없으면 기본 DDL 을 사용한다.
-    재실행 시 기존 mars_weather 데이터는 DELETE 로 비운 뒤 다시 INSERT 한다.
-    '''
     db_name = helper.config.get('database', 'codyssey')
     bootstrap = dict(helper.config)
     bootstrap.pop('database', None)
@@ -278,11 +239,8 @@ def setup_database(helper):
     helper.commit()
 
 
+# INSERT 반복 실행
 def insert_records(helper, records):
-    '''
-    CSV 레코드를 INSERT 쿼리 문자열로 변환해 한 건씩 반복 실행한다.
-    과제 요구: CSV 내용을 INSERT 쿼리로 변환 후 반복 실행.
-    '''
     for record in records:
         sql = row_to_insert_sql(record)
         print(sql)
@@ -290,8 +248,8 @@ def insert_records(helper, records):
     helper.commit()
 
 
+# 조회
 def fetch_weather_rows(helper):
-    '''mars_weather 테이블에서 날짜순 전체 행을 조회한다.'''
     helper.execute(
         'SELECT mars_date, temp, storm FROM mars_weather '
         'ORDER BY mars_date ASC'
@@ -305,13 +263,8 @@ def _parse_db_datetime(value):
     return datetime.strptime(str(value), '%Y-%m-%d %H:%M:%S')
 
 
+# 요약
 def build_summary_text(rows):
-    '''
-    이동 예정일과 모래 폭풍 겹침 여부를 요약한다.
-
-    - 이동 예정일: DB 에 저장된 마지막 날짜 + 1일
-    - storm 값이 0 이 아니면 해당 일에 모래 폭풍이 있는 것으로 판단
-    '''
     if not rows:
         return '데이터 없음', ['No data']
 
@@ -321,7 +274,6 @@ def build_summary_text(rows):
 
     last_date = max(dates)
     travel_date = last_date + timedelta(days=1)
-    # storm == 0 이면 맑음, 0 이 아니면 폭풍(또는 폭풍 강도) 기록
     storm_days = [d.strftime('%Y-%m-%d') for d, s in zip(dates, storms) if s != 0]
 
     on_travel = any(
@@ -360,7 +312,6 @@ def build_summary_text(rows):
 
 
 def _draw_line_chart(pixels, width, height, rows):
-    '''온도 꺾은선과 폭풍 표시를 픽셀 버퍼에 그린다.'''
     margin_left = 50
     margin_right = 20
     margin_top = 90
@@ -421,7 +372,6 @@ def _draw_line_chart(pixels, width, height, rows):
 
 
 def _draw_text_block(pixels, width, height, lines):
-    '''간단한 비트맵 텍스트로 요약 문구를 그린다.'''
     font = {
         ' ': ['00000', '00000', '00000', '00000', '00000', '00000', '00000'],
         '-': ['00000', '00000', '00000', '11111', '00000', '00000', '00000'],
@@ -511,11 +461,8 @@ def _png_pack(tag, data):
     )
 
 
+# PNG 저장
 def save_summary_png(path, rows, summary_text):
-    '''
-    matplotlib 없이 표준 라이브러리(struct, zlib)만으로 PNG 를 생성·저장한다.
-    상단에 요약 텍스트, 하단에 온도 꺾은선·폭풍일(빨간 띠)을 그린다.
-    '''
     width = 900
     height = 520
     pixels = [(255, 255, 255)] * (width * height)
@@ -539,11 +486,8 @@ def save_summary_png(path, rows, summary_text):
     print(f'PNG 저장 완료: {path}')
 
 
+# 실행
 def main():
-    '''
-    1) CSV 읽기·출력  2) MySQL 연결·테이블 생성
-    3) INSERT 반복 실행  4) 요약 출력  5) PNG 저장
-    '''
     csv_path = _resolve_csv_path()
     print(f'=== {os.path.basename(csv_path)} 내용 ===')
     raw_rows = read_and_print_csv(csv_path)

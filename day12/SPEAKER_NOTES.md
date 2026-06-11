@@ -159,3 +159,108 @@ Workbench에서 `SELECT COUNT(*) FROM mars_weather` → **1000**이면 성공입
 | weather_id INSERT 안 하는 이유? | AUTO_INCREMENT PK |
 | stom? | storm 오타, 코드에서 보정 |
 | matplotlib? | 과제상 stdlib만 → PNG 직접 생성 |
+
+---
+
+## 예상 질문 & 답변
+
+### 과제·설계
+
+**Q. 왜 CSV를 bulk insert 안 하고 INSERT를 1000번 반복하나요?**  
+→ 과제 요구가 「CSV를 **INSERT 쿼리로 변환**해서 **반복 실행**」이기 때문입니다. `insert_records()`의 `for` 루프가 핵심입니다.
+
+**Q. `weather_id`는 CSV에 있는데 왜 INSERT에 안 넣나요?**  
+→ DB에서 `weather_id`는 **PRIMARY KEY + AUTO_INCREMENT**라 MySQL이 1, 2, 3… 자동 부여합니다.
+
+**Q. `temp`가 21.4인데 왜 INT로 넣나요?**  
+→ 과제 테이블 스키마가 **`temp INT`**로 정해져 있어서 `int(round(float(...)))`로 반올림 후 저장합니다.
+
+**Q. `stom`은 뭐예요?**  
+→ CSV 헤더 **오타**입니다. 코드에서 `storm`으로 매핑해 처리했습니다.
+
+**Q. `storm` 값 0, 56, 99는 무슨 의미인가요?**  
+→ **`0` = 폭풍 없음**, **`0이 아님` = 폭풍 있음(또는 강도)**. 이동일 판단은 `storm == 0` 여부로 봅니다.
+
+**Q. 이동 예정일은 어떻게 정했나요?**  
+→ DB **마지막 날짜 + 1일**입니다. (예: `2052-09-26` → 이동일 `2052-09-27`)
+
+**Q. 「내일 날씨는 맑음」은 어떻게 판단했나요?**  
+→ 이동 예정일에 `storm == 0`이면 **폭풍 없음(이동 가능)**, `0`이 아니면 **폭풍 주의**입니다.
+
+---
+
+### MySQL·DB
+
+**Q. `MySQLHelper` 클래스는 왜 만들었나요?**  
+→ **보너스 과제**입니다. `connect`, `execute`, `fetchall`, `commit`, `close`를 묶어 DB 접근을 단순화했습니다.
+
+**Q. `commit()`은 왜 필요한가요?**  
+→ INSERT 후 **트랜잭션을 확정**해야 DB에 실제 저장됩니다.
+
+**Q. 재실행하면 데이터가 중복되지 않나요?**  
+→ `setup_database()`에서 **`DELETE FROM mars_weather`**로 비운 뒤 다시 INSERT합니다.
+
+**Q. 왜 `mysql.connector`를 썼나요?**  
+→ 과제에서 **MySQL 다루는 부분은 외부 라이브러리 사용 가능**하기 때문입니다.
+
+**Q. `DATETIME`인데 날짜만 `2050-01-01`이어도 되나요?**  
+→ MySQL이 `YYYY-MM-DD`도 받아들이며, 시간 없으면 `00:00:00`으로 처리됩니다.
+
+---
+
+### Python·코드
+
+**Q. 왜 `csv` 모듈을 썼나요?**  
+→ Python **표준 라이브러리**이고, 과제 제약(일반 처리는 stdlib)에 맞습니다.
+
+**Q. `utf-8-sig`는 왜 썼나요?**  
+→ Excel CSV의 **BOM** 때문에 첫 컬럼명이 깨지는 걸 방지합니다.
+
+**Q. 딕셔너리로 변환한다는 게 무슨 뜻인가요?**  
+→ CSV 한 줄을 `{'mars_date': '...', 'temp': 21, 'storm': 56}` 형태로 바꾼 것입니다. INSERT 만들기 편하게 **키-값 구조**로 정리한 것입니다.
+
+**Q. SQL Injection 위험은 없나요?**  
+→ `mars_date`의 `'`는 `''`로 이스케이프했습니다. 더 안전하게는 **prepared statement(바인딩)**를 씁니다. 과제는 INSERT **문자열 변환**을 요구해서 이 방식을 썼습니다.
+
+**Q. 1000번 execute가 느리지 않나요?**  
+→ 실무에선 `executemany()`가 더 빠릅니다. 다만 과제는 **한 줄씩 INSERT 변환·실행**이 목적입니다.
+
+---
+
+### PNG·시각화
+
+**Q. 왜 matplotlib 안 썼나요?**  
+→ CSV·일반 Python 처리는 **표준 라이브러리만** 써야 해서, PNG는 **`struct` + `zlib`**로 직접 생성했습니다.
+
+**Q. PNG에 뭐가 들어가 있나요?**  
+→ 요약 텍스트(기록 수, 평균 온도, 폭풍 일수, 이동일) + **최근 90일 온도 꺾은선** + **폭풍일 빨간 표시**입니다.
+
+---
+
+### 개념·확장
+
+**Q. CSV와 DB 중 어느 게 더 좋나요?**  
+→ CSV는 저장·백업에 좋고, DB는 **검색·정렬·집계**에 유리합니다. 이번엔 「이동일에 폭풍 있는지」 **조건 검색**이 필요해서 DB에 넣었습니다.
+
+**Q. PRIMARY KEY와 AUTO_INCREMENT 차이는?**  
+→ **PRIMARY KEY**는 행을 유일하게 구분하는 키, **AUTO_INCREMENT**는 그 값을 DB가 자동 증가시킵니다.
+
+**Q. `SELECT ... ORDER BY mars_date`는 왜 하나요?**  
+→ 날짜 순 정렬해야 **마지막 날짜·이동 예정일**을 정확히 구할 수 있어서입니다.
+
+---
+
+### 발표용 초단답 (외워두기)
+
+| 질문 | 10초 답 |
+|------|---------|
+| 과제 핵심? | CSV → INSERT 변환 → 반복 execute |
+| AUTO_INCREMENT? | weather_id는 DB가 자동 생성 |
+| temp 소수? | 스키마가 INT라 round 후 저장 |
+| stom? | storm 오타, 코드에서 보정 |
+| MySQLHelper? | 보너스, DB 연결·쿼리 캡슐화 |
+| matplotlib? | stdlib만 → PNG 직접 생성 |
+| 맑음 판단? | 이동일 storm == 0 |
+| 성공 확인? | `SELECT COUNT(*)` → 1000 |
+
+> **TIP:** 코드 질문이 나오면 **`insert_records`의 for 루프** 또는 **`row_to_insert_sql`**을 화면에 띄우고, 「과제 요구가 INSERT **변환**과 **반복 실행**이라 이 부분이 핵심입니다」라고 답하면 됩니다.

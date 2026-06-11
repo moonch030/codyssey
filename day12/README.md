@@ -106,7 +106,7 @@ flowchart TD
 
 ### 3단계: DB 준비 (`setup_database`)
 
-- `create_mars_weather.sql` 있으면 읽어 실행 (DROP 제외)
+- `create_mars_weather.sql` 있으면 읽어 실행 (DROP 후 CREATE 포함)
 - 없으면 내장 DDL로 테이블 생성
 - 재실행을 위해 `DELETE FROM mars_weather`
 

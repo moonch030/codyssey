@@ -260,7 +260,13 @@ def fetch_weather_rows(helper):
 def _parse_db_datetime(value):
     if isinstance(value, datetime):
         return value
-    return datetime.strptime(str(value), '%Y-%m-%d %H:%M:%S')
+    text = str(value).strip()
+    for fmt in ('%Y-%m-%d %H:%M:%S', '%Y-%m-%d'):
+        try:
+            return datetime.strptime(text, fmt)
+        except ValueError:
+            continue
+    raise ValueError(f'날짜 형식을 해석할 수 없습니다: {value}')
 
 
 # 요약
@@ -301,25 +307,45 @@ def build_summary_text(rows):
         console_lines.append('폭풍 날짜: ' + ', '.join(storm_days))
 
     png_lines = [
-        'Mars Weather Summary',
+        'MARS WEATHER REPORT',
         f'Records: {len(rows)}',
-        f'Avg temp: {avg_temp:.1f} C',
-        f'Storm days: {len(storm_days)}',
-        f'Travel: {travel_date.strftime("%Y-%m-%d")}',
-        forecast_en,
+        f'Avg Temp: {avg_temp:.1f} C',
+        f'Storm Days: {len(storm_days)}',
+        f'Travel Date: {travel_date.strftime("%Y-%m-%d")}',
+        forecast_en.upper(),
     ]
     return '\n'.join(console_lines), png_lines
 
 
-def _draw_line_chart(pixels, width, height, rows):
-    margin_left = 50
-    margin_right = 20
-    margin_top = 90
-    margin_bottom = 40
+def _set_pixel(pixels, width, height, x, y, color):
+    if 0 <= x < width and 0 <= y < height:
+        pixels[y * width + x] = color
+
+
+def _fill_rect(pixels, width, height, x0, y0, x1, y1, color):
+    for y in range(max(0, y0), min(height, y1)):
+        for x in range(max(0, x0), min(width, x1)):
+            pixels[y * width + x] = color
+
+
+def _draw_line_chart(pixels, width, height, rows, margin_top=200):
+    '''최근 90일만 확대해서 온도 선 + 폭풍일 표시 (1000일 전체는 너무 빽빽함).'''
+    chart_rows = rows[-90:] if len(rows) > 90 else rows
+
+    margin_left = 70
+    margin_right = 30
+    margin_bottom = 50
     plot_w = width - margin_left - margin_right
     plot_h = height - margin_top - margin_bottom
 
-    temps = [row[1] for row in rows]
+    _fill_rect(
+        pixels, width, height,
+        margin_left, margin_top,
+        width - margin_right, margin_top + plot_h,
+        (248, 248, 252),
+    )
+
+    temps = [row[1] for row in chart_rows]
     min_temp = min(temps)
     max_temp = max(temps)
     if min_temp == max_temp:
@@ -327,34 +353,29 @@ def _draw_line_chart(pixels, width, height, rows):
         max_temp += 1
 
     def plot_x(index):
-        if len(rows) == 1:
+        if len(chart_rows) == 1:
             return margin_left + plot_w // 2
-        ratio = index / (len(rows) - 1)
+        ratio = index / (len(chart_rows) - 1)
         return margin_left + int(ratio * plot_w)
 
     def plot_y(temp):
         ratio = (temp - min_temp) / (max_temp - min_temp)
         return margin_top + int((1.0 - ratio) * plot_h)
 
-    for x in range(margin_left, width - margin_right):
-        y = margin_top + plot_h
-        if 0 <= y < height:
-            pixels[y * width + x] = (220, 220, 220)
-
-    for y in range(margin_top, margin_top + plot_h, max(1, plot_h // 5)):
-        for x in range(margin_left, width - margin_right):
-            pixels[y * width + x] = (235, 235, 235)
-
-    points = []
-    for idx, row in enumerate(rows):
+    # 폭풍일 배경 (storm != 0)
+    for idx, row in enumerate(chart_rows):
+        if row[2] == 0:
+            continue
         x = plot_x(idx)
-        y = plot_y(row[1])
-        points.append((x, y))
-        if row[2] != 0:
-            for bar_x in range(max(margin_left, x - 2), min(width - margin_right, x + 3)):
-                for bar_y in range(margin_top, margin_top + plot_h):
-                    pixels[bar_y * width + bar_x] = (255, 210, 210)
+        _fill_rect(
+            pixels, width, height,
+            max(margin_left, x - 3), margin_top,
+            min(width - margin_right, x + 4), margin_top + plot_h,
+            (255, 200, 200),
+        )
 
+    # 온도 꺾은선 (두껍게)
+    points = [(plot_x(i), plot_y(row[1])) for i, row in enumerate(chart_rows)]
     for idx in range(1, len(points)):
         x0, y0 = points[idx - 1]
         x1, y1 = points[idx]
@@ -363,15 +384,30 @@ def _draw_line_chart(pixels, width, height, rows):
             t = step / steps
             x = int(x0 + (x1 - x0) * t)
             y = int(y0 + (y1 - y0) * t)
-            if 0 <= x < width and 0 <= y < height:
-                pixels[y * width + x] = (30, 90, 200)
-                for dx, dy in ((0, 1), (1, 0), (0, -1), (-1, 0)):
-                    nx, ny = x + dx, y + dy
-                    if 0 <= nx < width and 0 <= ny < height:
-                        pixels[ny * width + nx] = (30, 90, 200)
+            for dx in range(-1, 2):
+                for dy in range(-1, 2):
+                    _set_pixel(pixels, width, height, x + dx, y + dy, (20, 80, 200))
+
+    # 축
+    axis_y = margin_top + plot_h
+    _fill_rect(
+        pixels, width, height,
+        margin_left, axis_y, width - margin_right, axis_y + 2,
+        (80, 80, 80),
+    )
+    _fill_rect(
+        pixels, width, height,
+        margin_left - 2, margin_top, margin_left, axis_y + 2,
+        (80, 80, 80),
+    )
+
+    # 범례
+    _fill_rect(pixels, width, height, margin_left, margin_top - 28, margin_left + 14, margin_top - 14, (20, 80, 200))
+    _fill_rect(pixels, width, height, margin_left + 120, margin_top - 28, margin_left + 134, margin_top - 14, (255, 150, 150))
 
 
-def _draw_text_block(pixels, width, height, lines):
+def _draw_text_block(pixels, width, height, lines, scale=3, start_y=20):
+    '''5x7 비트맵 폰트를 scale 배 확대해서 그린다 (기존 1px 글씨는 거의 안 보임).'''
     font = {
         ' ': ['00000', '00000', '00000', '00000', '00000', '00000', '00000'],
         '-': ['00000', '00000', '00000', '11111', '00000', '00000', '00000'],
@@ -431,25 +467,28 @@ def _draw_text_block(pixels, width, height, lines):
     def draw_char(ch, start_x, start_y, color):
         glyph = font.get(ch)
         if glyph is None:
-            return start_x + 8
+            return start_x + 8 * scale
         for row_idx, row_bits in enumerate(glyph):
             for col_idx, bit in enumerate(row_bits):
                 if bit != '1':
                     continue
-                x = start_x + col_idx
-                y = start_y + row_idx
-                if 0 <= x < width and 0 <= y < height:
-                    pixels[y * width + x] = color
-        return start_x + 7
+                for sy in range(scale):
+                    for sx in range(scale):
+                        x = start_x + col_idx * scale + sx
+                        y = start_y + row_idx * scale + sy
+                        _set_pixel(pixels, width, height, x, y, color)
+        return start_x + 7 * scale
 
-    y = 8
-    for line in lines[:6]:
-        x = 10
+    y = start_y
+    line_gap = 7 * scale + 10
+    for line_idx, line in enumerate(lines[:6]):
+        color = (255, 255, 255) if line_idx == 0 else (30, 30, 30)
+        x = 20
         for ch in line:
             if ch == '\n':
                 continue
-            x = draw_char(ch, x, y, (20, 20, 20))
-        y += 12
+            x = draw_char(ch, x, y, color)
+        y += line_gap
 
 
 def _png_pack(tag, data):
@@ -461,14 +500,25 @@ def _png_pack(tag, data):
     )
 
 
-# PNG 저장
+# PNG 저장 (터미널 요약 + 최근 90일 차트를 이미지로 렌더링)
 def save_summary_png(path, rows, summary_text):
-    width = 900
-    height = 520
+    width = 1000
+    height = 620
     pixels = [(255, 255, 255)] * (width * height)
 
-    _draw_text_block(pixels, width, height, summary_text.splitlines())
-    _draw_line_chart(pixels, width, height, rows)
+    lines = summary_text.splitlines()
+
+    # 상단 제목 바 (첫 줄만)
+    _fill_rect(pixels, width, height, 0, 0, width, 55, (40, 60, 120))
+    if lines:
+        _draw_text_block(pixels, width, height, [lines[0]], scale=3, start_y=14)
+
+    # 요약 숫자 카드
+    _fill_rect(pixels, width, height, 20, 70, width - 20, 185, (240, 243, 250))
+    if len(lines) > 1:
+        _draw_text_block(pixels, width, height, lines[1:6], scale=2, start_y=85)
+
+    _draw_line_chart(pixels, width, height, rows, margin_top=210)
 
     raw = bytearray()
     for rgb in pixels:
